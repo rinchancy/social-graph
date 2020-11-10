@@ -7,17 +7,64 @@ from config import *
 
 g = networkx.Graph()
 
-names = dict()
+data = {}
 
-source_id = 92137731
-x0 = requests.get('https://api.vk.com/method/users.get?user_ids={}&fields=first_name,last_name&access_token={}&v=5.124'.format(source_id, secret))
-x1 = requests.get('https://api.vk.com/method/friends.get?user_id={}&fields=first_name,last_name,deactivated,can_access_closed,blacklisted&access_token={}&v=5.124'.format(source_id, secret))
-g.add_node(source_id, fname = x0.json()['response'][0]['first_name'], lname = x0.json()['response'][0]['last_name'])
-for x in x1.json()['response']['items'] :
+source_id = 153351578
+x0 = requests.get('https://api.vk.com/method/users.get?user_ids={}&fields=first_name,last_name,'
+                  'career,city,home_town,schools,universities&access_token={}&v=5.124'.format(source_id, secret))
+x1 = requests.get('https://api.vk.com/method/friends.get?user_id={}&fields=first_name,last_name,deactivated,can_access_closed,blacklisted,'
+                  'career,city,home_town,schools,universities&access_token={}&v=5.124'.format(source_id, secret))
+print(x1.json())
+me = x0.json()['response'][0]
+g.add_node(source_id, fname = me['first_name'], lname = me['last_name'])
+data[me['id']] = {}
+if 'city' in me:
+    data[me['id']]['city'] = me['city']['title']
+else:
+    data[me['id']]['city'] = ''
+if 'home_town' in me:
+    data[me['id']]['home_town'] = me['home_town']
+else:
+    data[me['id']]['home_town'] = ''
+if 'career' in me:
+    data[me['id']]['career'] = me['career']
+else:
+    data[me['id']]['career'] = []
+if 'universities' in me:
+    data[me['id']]['universities'] = me['universities']
+else:
+    data[me['id']]['universities'] = []
+if 'schools' in me:
+    data[me['id']]['schools'] = me['schools']
+else:
+    data[me['id']]['schools'] = []
+for x in x1.json()['response']['items']:
     if not 'deactivated' in x and x['blacklisted'] == 0 and x['can_access_closed']:
         g.add_node(x['id'], fname = x['first_name'], lname = x['last_name'])
-        names[x['id']] = x['first_name'] + ' ' + x['last_name']
         g.add_edge(source_id, x['id'])
+        data[x['id']] = {}
+        if 'city' in x:
+            data[x['id']]['city'] = x['city']['title']
+        else:
+            data[x['id']]['city'] = ''
+        if 'home_town' in x:
+            data[x['id']]['home_town'] = x['home_town']
+        else:
+            data[x['id']]['home_town'] = ''
+        if 'career' in x:
+            data[x['id']]['career'] = x['career']
+        else:
+            data[x['id']]['career'] = []
+        if 'universities' in x:
+            data[x['id']]['universities'] = x['universities']
+        else:
+            data[x['id']]['universities'] = []
+        if 'schools' in x:
+            data[x['id']]['schools'] = x['schools']
+        else:
+            data[x['id']]['schools'] = []
+
+print(data)
 
 for i in range(1, len(g.nodes), 100):
     friends = ','.join(map(str, list(g.nodes)[i:i+100]))
@@ -37,7 +84,6 @@ for v in g.nodes:
         rm_nodes.add(v)
 for v in rm_nodes:
     g.remove_node(v)
-    names.pop(v)
 
 colors_used = 1
 col_for_draw = []
@@ -45,6 +91,7 @@ stat = []
 colors = {}
 dend = community.generate_dendrogram(g)
 print(dend)
+stat_dict = {}
 for i in range(len(dend)):
     if i == 0:
         for v in g.nodes:
@@ -63,18 +110,12 @@ for i in range(len(dend)):
                     colors[col_for_draw[j]] = colors_used
                 stat[j] = colors[col_for_draw[j]]
     colors = {}
-    print(col_for_draw)
-    print(stat)
-    print('')
 for j in range(len(g.nodes)):
     if (stat[j] == 0):
         if col_for_draw[j] not in colors:
             colors_used += 1
             colors[col_for_draw[j]] = colors_used
         stat[j] = colors[col_for_draw[j]]
-print(col_for_draw)
-print(stat)
-print('')
 
 clusters = list(set() for i in range(colors_used))
 j = 0
@@ -89,5 +130,12 @@ for cl in clusters:
         print(g.nodes[pers]['fname']+' '+g.nodes[pers]['lname'])
     print('')
 
-networkx.draw(g, with_labels=True, labels = names, font_size=8, font_color='red', width=0.5, node_size=50, node_color = stat, cmap = 'rainbow')
+i = 0
+stat_dict = {}
+for v in g.nodes:
+    stat_dict[v] = stat[i]
+    i += 1
+
+
+networkx.draw(g, with_labels=True, labels=stat_dict, font_size=6, font_color='black', width=0.5, node_size=50, node_color=stat, cmap='rainbow')
 plt.show()
