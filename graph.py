@@ -8,24 +8,21 @@ from config import *
 g = networkx.Graph()
 
 data = {}
+city_base = {}
 
-source_id = 153351578
+# add all nodes + their data
+source_id = 211577724
 x0 = requests.get('https://api.vk.com/method/users.get?user_ids={}&fields=first_name,last_name,'
-                  'career,city,home_town,schools,universities&access_token={}&v=5.124'.format(source_id, secret))
+                  'career,city,schools,universities&access_token={}&v=5.124'.format(source_id, secret))
 x1 = requests.get('https://api.vk.com/method/friends.get?user_id={}&fields=first_name,last_name,deactivated,can_access_closed,blacklisted,'
-                  'career,city,home_town,schools,universities&access_token={}&v=5.124'.format(source_id, secret))
-print(x1.json())
+                  'career,city,schools,universities&access_token={}&v=5.124'.format(source_id, secret))
 me = x0.json()['response'][0]
-g.add_node(source_id, fname = me['first_name'], lname = me['last_name'])
+g.add_node(source_id, fname=me['first_name'], lname=me['last_name'])
 data[me['id']] = {}
 if 'city' in me:
     data[me['id']]['city'] = me['city']['title']
 else:
     data[me['id']]['city'] = ''
-if 'home_town' in me:
-    data[me['id']]['home_town'] = me['home_town']
-else:
-    data[me['id']]['home_town'] = ''
 if 'career' in me:
     data[me['id']]['career'] = me['career']
 else:
@@ -40,17 +37,13 @@ else:
     data[me['id']]['schools'] = []
 for x in x1.json()['response']['items']:
     if not 'deactivated' in x and x['blacklisted'] == 0 and x['can_access_closed']:
-        g.add_node(x['id'], fname = x['first_name'], lname = x['last_name'])
+        g.add_node(x['id'], fname=x['first_name'], lname=x['last_name'])
         g.add_edge(source_id, x['id'])
         data[x['id']] = {}
         if 'city' in x:
             data[x['id']]['city'] = x['city']['title']
         else:
             data[x['id']]['city'] = ''
-        if 'home_town' in x:
-            data[x['id']]['home_town'] = x['home_town']
-        else:
-            data[x['id']]['home_town'] = ''
         if 'career' in x:
             data[x['id']]['career'] = x['career']
         else:
@@ -64,8 +57,7 @@ for x in x1.json()['response']['items']:
         else:
             data[x['id']]['schools'] = []
 
-print(data)
-
+# add edges between friends
 for i in range(1, len(g.nodes), 100):
     friends = ','.join(map(str, list(g.nodes)[i:i+100]))
     x2 = requests.get('https://api.vk.com/method/friends.getMutual?source_uid={}&target_uids={}&&access_token={}&v=5.124'.format(source_id, friends, secret))
@@ -77,7 +69,7 @@ for i in range(1, len(g.nodes), 100):
                 g.add_edge(curr['id'], comm)
     sleep(0.2)
 
-
+# remove lonely nodes
 rm_nodes = set()
 for v in g.nodes:
     if g.degree[v] == 1:
@@ -85,13 +77,13 @@ for v in g.nodes:
 for v in rm_nodes:
     g.remove_node(v)
 
+# coloring saved to stat
 colors_used = 1
 col_for_draw = []
 stat = []
 colors = {}
 dend = community.generate_dendrogram(g)
 print(dend)
-stat_dict = {}
 for i in range(len(dend)):
     if i == 0:
         for v in g.nodes:
@@ -116,7 +108,13 @@ for j in range(len(g.nodes)):
             colors_used += 1
             colors[col_for_draw[j]] = colors_used
         stat[j] = colors[col_for_draw[j]]
+i = 0
+stat_dict = {}
+for v in g.nodes:
+    stat_dict[v] = stat[i]
+    i += 1
 
+# form clusters
 clusters = list(set() for i in range(colors_used))
 j = 0
 for v in g.nodes:
@@ -130,12 +128,133 @@ for cl in clusters:
         print(g.nodes[pers]['fname']+' '+g.nodes[pers]['lname'])
     print('')
 
-i = 0
-stat_dict = {}
-for v in g.nodes:
-    stat_dict[v] = stat[i]
+# find common
+i = 1
+for cl in clusters:
+    city_dict = {}
+    car_dict = {}
+    uni_dict = {}
+    fac_dict = {}
+    sch_dict = {}
+    for v in cl:
+        a = data[v]['city']
+        b = data[v]['career']
+        c = data[v]['universities']
+        d = data[v]['schools']
+        if a != '':
+            if a not in city_dict:
+                city_dict[a] = 1
+            else:
+                city_dict[a] += 1
+        for bb in b:
+            if 'company' in bb:
+                bbb = bb['company']
+            elif 'group_id' in bb:
+                tmp = requests.get(
+                    'https://api.vk.com/method/groups.getById?group_id={}&fields=name&access_token={}&v=5.124'.format(bb['group_id'], secret))
+                sleep(0.3)
+                bbb = tmp.json()['response'][0]['name']
+            if bbb not in car_dict:
+                car_dict[bbb] = 1
+            else:
+                car_dict[bbb] += 1
+        for cc in c:
+            ccc = cc['name']
+            if 'faculty_name' in cc:
+                cccc = cc['name'] + ' ' + cc['faculty_name']
+            else:
+                cccc = 'None'
+            if ccc not in uni_dict:
+                uni_dict[ccc] = 1
+            else:
+                uni_dict[ccc] += 1
+            if cccc != 'None' and cccc not in fac_dict:
+                fac_dict[cccc] = 1
+            elif cccc != 'None':
+                fac_dict[cccc] += 1
+        for dd in d:
+            if dd['city'] not in city_base:
+                tmp = requests.get(
+                    'https://api.vk.com/method/database.getCitiesById?city_ids={}&fields=title&access_token={}&v=5.124'.format(dd['city'], secret))
+                sleep(0.3)
+                ddd = dd['name'] + ' ' + tmp.json()['response'][0]['title']
+            else:
+                ddd = dd['name'] + ' ' + city_base[dd['city']]
+            if ddd not in sch_dict:
+                sch_dict[ddd] = 1
+            else:
+                sch_dict[ddd] += 1
+    sorted_city = sorted(city_dict.items(), key=lambda z: -z[1])
+    sorted_car = sorted(car_dict.items(), key=lambda z: -z[1])
+    sorted_uni = sorted(uni_dict.items(), key=lambda z: -z[1])
+    sorted_fac = sorted(fac_dict.items(), key=lambda z: -z[1])
+    sorted_sch = sorted(sch_dict.items(), key=lambda z: -z[1])
+    if len(cl) > 5:  # big clusters
+        print('Prediction for cluster ' + str(i) + ' (big):')
+        print('___Cities:')
+        for x in sorted_city:
+            if x[1] >= 3 and round(x[1] / len(cl) * 100) >= 40:  # at least 3 and more than 40%
+                print(x[0] + ' ' + str(round(x[1] / len(cl) * 100)) + '%')
+            else:
+                break
+        print('___Career:')
+        for x in sorted_car:
+            if x[1] >= 2 and round(x[1] / len(cl) * 100) >= 2:  # at least 2 and more than 2%
+                print(x[0] + ' ' + str(round(x[1] / len(cl) * 100)) + '%')
+            else:
+                break
+        print('___University:')
+        for x in sorted_uni:
+            if x[1] >= 3 and round(x[1] / len(cl) * 100) >= 33:  # at least 3 and more than 33%
+                print(x[0] + ' ' + str(round(x[1] / len(cl) * 100)) + '%')
+            else:
+                break
+        for x in sorted_fac:
+            if x[1] >= 3 and round(x[1] / len(cl) * 100) >= 2:  # at least 3 and more than 2%
+                print(x[0] + ' ' + str(round(x[1] / len(cl) * 100)) + '%')
+            else:
+                break
+        print('___School:')
+        for x in sorted_sch:
+            if x[1] >= 3 and round(x[1] / len(cl) * 100) >= 5:  # at least 3 and more than 5%
+                print(x[0] + ' ' + str(round(x[1] / len(cl) * 100)) + '%')
+            else:
+                break
+        print('')
+    else:  # small clusters (2-5 persons)
+        print('Prediction for cluster ' + str(i) + ' (small):')
+        print('___Cities:')
+        for x in sorted_city:
+            if x[1] >= 2:  # at least 2
+                print(x[0] + ' ' + str(round(x[1] / len(cl) * 100)) + '%')
+            else:
+                break
+        print('___Career:')
+        for x in sorted_car:
+            if x[1] >= 2:  # at least 2
+                print(x[0] + ' ' + str(round(x[1] / len(cl) * 100)) + '%')
+            else:
+                break
+        print('___University:')
+        for x in sorted_uni:
+            if x[1] >= 2:  # at least 2
+                print(x[0] + ' ' + str(round(x[1] / len(cl) * 100)) + '%')
+            else:
+                break
+        for x in sorted_fac:
+            if x[1] >= 2:  # at least 2
+                print(x[0] + ' ' + str(round(x[1] / len(cl) * 100)) + '%')
+            else:
+                break
+        print('___School:')
+        for x in sorted_sch:
+            if x[1] >= 2:  # at least 2
+                print(x[0] + ' ' + str(round(x[1] / len(cl) * 100)) + '%')
+            else:
+                break
+        print('')
     i += 1
 
-
+# draw social graph
 networkx.draw(g, with_labels=True, labels=stat_dict, font_size=6, font_color='black', width=0.5, node_size=50, node_color=stat, cmap='rainbow')
 plt.show()
