@@ -11,7 +11,7 @@ data = {}
 city_base = {}
 
 # add all nodes + their data
-source_id = 211577724
+source_id = 153351578
 x0 = requests.get('https://api.vk.com/method/users.get?user_ids={}&fields=first_name,last_name,'
                   'career,city,schools,universities&access_token={}&v=5.124'.format(source_id, secret))
 x1 = requests.get('https://api.vk.com/method/friends.get?user_id={}&fields=first_name,last_name,deactivated,can_access_closed,blacklisted,'
@@ -128,6 +128,54 @@ for cl in clusters:
         print(g.nodes[pers]['fname']+' '+g.nodes[pers]['lname'])
     print('')
 
+# get all groups
+all_groups = dict()
+i = 0
+print('Getting groups info for following clusters:')
+for cl in clusters:
+    print('Cluster', i+1, 'of', len(clusters))
+    for v in cl:
+        tmp = requests.get(
+            'https://api.vk.com/method/groups.get?user_id={}&extended=1&fields=name&access_token={}&v=5.124'.format(v, secret))
+        sleep(0.3)
+        if tmp.status_code != 200:
+            tmp = requests.get(
+                'https://api.vk.com/method/users.getSubscriptions?user_id={}&extended=1&fields=name&access_token={}&v=5.124'.format(v, secret))
+            sleep(0.3)
+        for item in tmp.json()['response']['items']:
+            if 'name' in item:
+                gr_name = item['name']
+            else:
+                gr_name = item['last_name'] + ' ' + item['first_name']
+            if gr_name not in all_groups:
+                all_groups[gr_name] = [0] * len(clusters)
+            all_groups[gr_name][i] += 1
+    i += 1
+av_groups = [0] * len(all_groups)
+j = 0
+for gr in all_groups.keys():
+    av_groups[j] = sum(all_groups[gr]) / len(g.nodes)
+    for i in range(len(clusters)):
+        all_groups[gr][i] = all_groups[gr][i]/len(clusters[i])
+    j += 1
+# find best fitting groups
+best_groups = []
+for i in range(len(clusters)):
+    a = dict()
+    best_groups.append(a)
+i = 0
+for gr in all_groups.keys():
+    if max(all_groups[gr]) - av_groups[i] >= 0.15:
+        m = max(all_groups[gr])
+        mms = [k for k, j in enumerate(all_groups[gr]) if j == m]
+        for mm in mms:
+            if all_groups[gr][mm] * len(clusters[mm]) >= 3:
+                best_groups[mm][gr] = round(m - av_groups[i], 4)
+    i += 1
+best_res = []
+for cl in best_groups:
+    best_res.append(dict(sorted(cl.items(), key=lambda item: -item[1])))
+
 # find common
 i = 1
 for cl in clusters:
@@ -220,6 +268,9 @@ for cl in clusters:
                 print(x[0] + ' ' + str(round(x[1] / len(cl) * 100)) + '%')
             else:
                 break
+        print('___Interests:')
+        for gr in best_res[i-1].keys():
+            print(gr, f'{round(100 * best_res[i - 1][gr], 2)}% more than average')
         print('')
     else:  # small clusters (2-5 persons)
         print('Prediction for cluster ' + str(i) + ' (small):')
@@ -252,8 +303,13 @@ for cl in clusters:
                 print(x[0] + ' ' + str(round(x[1] / len(cl) * 100)) + '%')
             else:
                 break
+        print('___Interests:')
+        for gr in best_res[i - 1].keys():
+            print(gr, f'{round(100 * best_res[i - 1][gr], 2)}% more than average')
         print('')
     i += 1
+
+#count groups
 
 # draw social graph
 networkx.draw(g, with_labels=True, labels=stat_dict, font_size=6, font_color='black', width=0.5, node_size=50, node_color=stat, cmap='rainbow')
